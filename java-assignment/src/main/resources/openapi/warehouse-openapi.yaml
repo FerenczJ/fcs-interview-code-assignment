@@ -32,9 +32,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Warehouse'
-        
         '400':
           description: Invalid request parameters
+        '409':
+          description: Warehouse unit with the same business unit code already exists
 
   /warehouse/{id}:
     get:
@@ -99,7 +100,6 @@ paths:
                 $ref: '#/components/schemas/Warehouse'
         '404':
           description: Warehouse unit not found
-
         '400':
           description: Invalid request parameters
 components:

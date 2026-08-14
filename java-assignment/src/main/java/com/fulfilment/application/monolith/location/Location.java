@@ -1,12 +1,5 @@
 package com.fulfilment.application.monolith.location;
 
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.function.Function;
-import java.util.stream.Collectors;
-
 public enum Location {
     ZWOLLE_001("ZWOLLE-001", 1, 40),
     ZWOLLE_002("ZWOLLE-002", 2, 50),
