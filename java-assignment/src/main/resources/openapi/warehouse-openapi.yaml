@@ -74,9 +74,9 @@ paths:
   /warehouse/{businessUnitCode}/replacement:
     post:
       summary: Replace the current active Warehouse
-      description: | 
+      description: |
         Replaces the current active Warehouse identified by `businessUnitCode` unit by a new Warehouse provided in the request body
-        A Warehouse can be replaced by another Warehouse with the same Business Unit Code. 
+        A Warehouse can be replaced by another Warehouse with the same Business Unit Code.
         That means that the previous Warehouse will be archived and the new Warehouse will be created assuming its place.
       parameters:
         - name: businessUnitCode
@@ -102,6 +102,30 @@ paths:
           description: Warehouse unit not found
         '400':
           description: Invalid request parameters
+
+  /fulfillment:
+    post:
+      summary: Link a store, product, and warehouse for fulfillment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FulfillmentAssociation'
+      responses:
+        '200':
+          description: Fulfillment association created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FulfillmentAssociation'
+        '400':
+          description: Invalid request parameters
+        '404':
+          description: Store, product, or warehouse not found
+        '409':
+          description: Fulfillment rule violated or link already exists
+
 components:
   schemas:
     Warehouse:
@@ -122,3 +146,20 @@ components:
         stock:
           type: integer
           example: 50
+
+    FulfillmentAssociation:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "789"
+        storeName:
+          type: string
+          example: "Main Store"
+        productName:
+          type: string
+          example: "Blue Shirt"
+        warehouseBusinessUnitCode:
+          type: string
+          example: "MWH.001"
+
