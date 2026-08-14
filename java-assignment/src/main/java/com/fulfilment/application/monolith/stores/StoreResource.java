@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.quarkus.panache.common.Sort;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.event.Event;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.Consumes;
@@ -21,13 +22,17 @@ import jakarta.ws.rs.ext.Provider;
 import java.util.List;
 import org.jboss.logging.Logger;
 
+import static com.fulfilment.application.monolith.stores.StoreSyncEvent.SyncAction.CREATE;
+import static com.fulfilment.application.monolith.stores.StoreSyncEvent.SyncAction.UPDATE;
+
 @Path("store")
 @ApplicationScoped
 @Produces("application/json")
 @Consumes("application/json")
 public class StoreResource {
 
-  @Inject LegacyStoreManagerGateway legacyStoreManagerGateway;
+  // Inject the CDI event launcher instead of the gateway directly
+  @Inject Event<StoreSyncEvent> storeSyncEventEvent;
 
   private static final Logger LOGGER = Logger.getLogger(StoreResource.class.getName());
 
@@ -55,7 +60,8 @@ public class StoreResource {
 
     store.persist();
 
-    legacyStoreManagerGateway.createStoreOnLegacySystem(store);
+    // Fire event. The observer handles delaying execution until post-commit.
+    storeSyncEventEvent.fire(new StoreSyncEvent(store, CREATE));
 
     return Response.ok(store).status(201).build();
   }
@@ -77,7 +83,8 @@ public class StoreResource {
     entity.name = updatedStore.name;
     entity.quantityProductsInStock = updatedStore.quantityProductsInStock;
 
-    legacyStoreManagerGateway.updateStoreOnLegacySystem(updatedStore);
+    // Fire event. Passed entity context will sync post-commit.
+    storeSyncEventEvent.fire(new StoreSyncEvent(entity, UPDATE));
 
     return entity;
   }
@@ -104,7 +111,8 @@ public class StoreResource {
       entity.quantityProductsInStock = updatedStore.quantityProductsInStock;
     }
 
-    legacyStoreManagerGateway.updateStoreOnLegacySystem(updatedStore);
+    // Fire event using the updated state of managed database entity.
+    storeSyncEventEvent.fire(new StoreSyncEvent(entity, UPDATE));
 
     return entity;
   }
