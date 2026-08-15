@@ -6,6 +6,7 @@ import com.warehouse.api.WarehouseResource;
 import com.warehouse.api.beans.Warehouse;
 import jakarta.enterprise.context.RequestScoped;
 import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.ws.rs.WebApplicationException;
@@ -31,6 +32,7 @@ public class WarehouseResourceImpl implements WarehouseResource {
   }
 
   @Override
+  @Transactional
   public Warehouse createANewWarehouseUnit(@NotNull @Valid Warehouse data) {
     if (warehouseRepository.findByBusinessUnitCode(data.getBusinessUnitCode()) != null) {
       throw new WebApplicationException("Business unit code already exists", Response.Status.CONFLICT);
@@ -56,6 +58,7 @@ public class WarehouseResourceImpl implements WarehouseResource {
   }
 
   @Override
+  @Transactional
   public void archiveAWarehouseUnitByID(String id) {
     var warehouse = warehouseRepository.findByBusinessUnitCode(id);
     if (warehouse == null) {
@@ -66,6 +69,7 @@ public class WarehouseResourceImpl implements WarehouseResource {
   }
 
   @Override
+  @Transactional
   public Warehouse replaceTheCurrentActiveWarehouse(String businessUnitCode, @NotNull @Valid Warehouse data) {
     var current = warehouseRepository.findByBusinessUnitCode(businessUnitCode);
     if (current == null) {
