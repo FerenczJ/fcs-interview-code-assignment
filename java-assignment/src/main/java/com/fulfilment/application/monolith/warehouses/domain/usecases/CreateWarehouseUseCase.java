@@ -4,34 +4,29 @@ import com.fulfilment.application.monolith.location.Location;
 import com.fulfilment.application.monolith.warehouses.domain.models.Warehouse;
 import com.fulfilment.application.monolith.warehouses.domain.ports.CreateWarehouseOperation;
 import com.fulfilment.application.monolith.warehouses.domain.ports.LocationResolver;
-import com.fulfilment.application.monolith.warehouses.domain.ports.WarehouseStore;
+import com.fulfilment.application.monolith.warehouses.domain.ports.WarehouseRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 
 @ApplicationScoped
 public class CreateWarehouseUseCase implements CreateWarehouseOperation {
-  private static final int MAX_WAREHOUSES_PER_LOCATION = 2;
-
-  private final WarehouseStore warehouseStore;
+  private final WarehouseRepository warehouseRepository;
   private final LocationResolver locationResolver;
 
-  public CreateWarehouseUseCase(WarehouseStore warehouseStore, LocationResolver locationResolver) {
-    this.warehouseStore = warehouseStore;
+  public CreateWarehouseUseCase(WarehouseRepository warehouseStore, LocationResolver locationResolver) {
+    this.warehouseRepository = warehouseStore;
     this.locationResolver = locationResolver;
   }
 
   @Override
   public void create(Warehouse warehouse) {
     validateBasicData(warehouse);
+    validateBusinessUnitCodeUniqueness(warehouse.businessUnitCode);
 
-    if (warehouseStore.findByBusinessUnitCode(warehouse.businessUnitCode) != null) {
-      throw new IllegalArgumentException("Business unit code already exists");
-    }
-
-    var location = validateAndResolveLocation(warehouse.location);
+    var location = resolveLocation(warehouse.location);
     validateCapacityAndStock(warehouse, location);
     validateWarehouseCreationFeasibility(location);
 
-    warehouseStore.create(warehouse);
+    warehouseRepository.create(warehouse);
   }
 
   private void validateBasicData(Warehouse warehouse) {
@@ -43,12 +38,12 @@ public class CreateWarehouseUseCase implements CreateWarehouseOperation {
     }
   }
 
-  private Location validateAndResolveLocation(String identifier) {
-    var location = locationResolver.resolveByIdentifier(identifier);
-    if (location == null) {
-      throw new IllegalArgumentException("Location is invalid");
+  private Location resolveLocation(String identifier) {
+    try {
+      return locationResolver.resolveByIdentifier(identifier);
+    } catch (Exception e) {
+      throw new IllegalArgumentException("Location is invalid", e);
     }
-    return location;
   }
 
   private void validateCapacityAndStock(Warehouse warehouse, Location location) {
@@ -61,16 +56,16 @@ public class CreateWarehouseUseCase implements CreateWarehouseOperation {
   }
 
   private void validateWarehouseCreationFeasibility(Location location) {
-    if (!canCreateWarehouseAtLocation(location)) {
+
+    var existingWarehousesCount = warehouseRepository.countByLocation(location.identification());
+    if (location.zone() <= existingWarehousesCount) {
       throw new IllegalArgumentException("Maximum number of warehouses reached for location");
     }
   }
 
-  private boolean canCreateWarehouseAtLocation(Location location) {
-    return warehouseStore.getAll().stream()
-        .filter(existing -> location.identification().equals(existing.location))
-        .filter(existing -> existing.archivedAt == null)
-        .count()
-        < MAX_WAREHOUSES_PER_LOCATION;
+  private void validateBusinessUnitCodeUniqueness(String businessUnitCode) {
+    if (warehouseRepository.findByBusinessUnitCode(businessUnitCode) != null) {
+      throw new IllegalArgumentException("Business unit code already exists");
+    }
   }
 }

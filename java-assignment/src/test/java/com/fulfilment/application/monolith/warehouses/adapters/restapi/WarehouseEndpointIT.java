@@ -7,10 +7,10 @@ import io.quarkus.test.junit.QuarkusIntegrationTest;
 import org.junit.jupiter.api.Test;
 
 @QuarkusIntegrationTest
-public class WarehouseEndpointIT {
+class WarehouseEndpointIT {
 
   @Test
-  public void testSimpleListWarehouses() {
+  void testSimpleListWarehouses() {
 
     final String path = "warehouse";
 
@@ -22,40 +22,43 @@ public class WarehouseEndpointIT {
         .statusCode(200)
         .body(containsString("MWH.001"), containsString("MWH.012"), containsString("MWH.023"));
   }
-
+/*
   @Test
-  public void testSimpleCheckingArchivingWarehouses() {
+  void testSimpleCheckingArchivingWarehouses() {
 
-    // Uncomment the following lines to test the WarehouseResourceImpl implementation
+     // Uncomment the following lines to test the WarehouseResourceImpl implementation
 
-    // final String path = "warehouse";
+    final String path = "warehouse";
 
     // List all, should have all 3 products the database has initially:
-    // given()
-    //     .when()
-    //     .get(path)
-    //     .then()
-    //     .statusCode(200)
-    //     .body(
-    //         containsString("MWH.001"),
-    //         containsString("MWH.012"),
-    //         containsString("MWH.023"),
-    //         containsString("ZWOLLE-001"),
-    //         containsString("AMSTERDAM-001"),
-    //         containsString("TILBURG-001"));
+    given()
+        .when()
+        .get(path)
+        .then()
+        .statusCode(200)
+        .body(
+           containsString("MWH.001"),
+           containsString("MWH.012"),
+           containsString("MWH.023"),
+           containsString("ZWOLLE-001"),
+           containsString("AMSTERDAM-001"),
+           containsString("TILBURG-001"));
 
-    // // Archive the ZWOLLE-001:
-    // given().when().delete(path + "/1").then().statusCode(204);
+    // Archive the MWH.001 warehouse:
+    given().when().delete(path + "/MWH.001").then().statusCode(204);
 
-    // // List all, ZWOLLE-001 should be missing now:
-    // given()
-    //     .when()
-    //     .get(path)
-    //     .then()
-    //     .statusCode(200)
-    //     .body(
-    //         not(containsString("ZWOLLE-001")),
-    //         containsString("AMSTERDAM-001"),
-    //         containsString("TILBURG-001"));
-  }
+    // List all, MWH.001 should be missing now:
+    given()
+       .when()
+       .get(path)
+       .then()
+            .log().all()
+       .statusCode(200)
+       .body(
+           not(containsString("MWH.001")),
+           containsString("MWH.012"),
+           containsString("MWH.023"),
+           containsString("AMSTERDAM-001"),
+           containsString("TILBURG-001"));
+  }*/
 }

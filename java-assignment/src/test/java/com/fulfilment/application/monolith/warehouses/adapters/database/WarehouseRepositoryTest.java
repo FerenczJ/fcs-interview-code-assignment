@@ -30,7 +30,7 @@ class WarehouseRepositoryTest {
     assertNull(repository.findByBusinessUnitCode("MISSING"));
   }
 
-  private static final class StubWarehouseRepository extends WarehouseRepository {
+  private static final class StubWarehouseRepository extends WarehouseRepositoryImpl {
     private final List<Warehouse> warehouses = new ArrayList<>();
 
     @Override
@@ -47,11 +47,6 @@ class WarehouseRepositoryTest {
     @Override
     public void update(Warehouse warehouse) {
       create(warehouse);
-    }
-
-    @Override
-    public void remove(Warehouse warehouse) {
-      warehouses.removeIf(existing -> existing.businessUnitCode.equals(warehouse.businessUnitCode));
     }
 
     @Override

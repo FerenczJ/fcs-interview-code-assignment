@@ -7,7 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import com.fulfilment.application.monolith.location.Location;
 import com.fulfilment.application.monolith.warehouses.domain.models.Warehouse;
 import com.fulfilment.application.monolith.warehouses.domain.ports.LocationResolver;
-import com.fulfilment.application.monolith.warehouses.domain.ports.WarehouseStore;
+import com.fulfilment.application.monolith.warehouses.domain.ports.WarehouseRepository;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -83,8 +83,8 @@ class CreateWarehouseUseCaseTest {
     store.create(warehouseWithCode("MWH.001", Location.ZWOLLE_001.identification(), 40, 10));
     var useCase = new CreateWarehouseUseCase(store, new StubLocationResolver());
 
-    var ex = assertThrows(IllegalArgumentException.class,
-        () -> useCase.create(warehouseWithCode("MWH.001", Location.ZWOLLE_001.identification(), 40, 10)));
+    var duplicateWarehouse = warehouseWithCode("MWH.001", Location.ZWOLLE_001.identification(), 40, 10);
+    var ex = assertThrows(IllegalArgumentException.class, () -> useCase.create(duplicateWarehouse));
 
     assertEquals("Business unit code already exists", ex.getMessage());
   }
@@ -105,8 +105,8 @@ class CreateWarehouseUseCaseTest {
     store.create(activeWarehouse("MWH.002", Location.ZWOLLE_001.identification()));
     var useCase = new CreateWarehouseUseCase(store, new StubLocationResolver());
 
-    var ex = assertThrows(IllegalArgumentException.class, () -> useCase.create(
-        warehouseWithCode("MWH.003", Location.ZWOLLE_001.identification(), 40, 10)));
+    var warehouse = warehouseWithCode("MWH.003", Location.ZWOLLE_001.identification(), 40, 10);
+    var ex = assertThrows(IllegalArgumentException.class, () -> useCase.create(warehouse));
 
     assertEquals("Maximum number of warehouses reached for location", ex.getMessage());
   }
@@ -114,29 +114,19 @@ class CreateWarehouseUseCaseTest {
   @Test
   void create_ignoresArchivedWarehousesWhenCountingLocationCapacity() {
     var store = new StubWarehouseStore();
-    store.create(archivedWarehouse("MWH.001", Location.ZWOLLE_001.identification()));
+    store.create(archivedWarehouse(Location.ZWOLLE_001.identification()));
     var useCase = new CreateWarehouseUseCase(store, new StubLocationResolver());
 
-    assertDoesNotThrow(() -> useCase.create(
-        warehouseWithCode("MWH.002", Location.ZWOLLE_001.identification(), 40, 10)));
-  }
-
-  @Test
-  void create_acceptsWhenOnlyOneActiveWarehouseExistsAtLocation() {
-    var store = new StubWarehouseStore();
-    store.create(activeWarehouse("MWH.001", Location.ZWOLLE_001.identification()));
-    var useCase = new CreateWarehouseUseCase(store, new StubLocationResolver());
-
-    assertDoesNotThrow(() -> useCase.create(
-        warehouseWithCode("MWH.002", Location.ZWOLLE_001.identification(), 40, 10)));
+    var warehouse = warehouseWithCode("MWH.002", Location.ZWOLLE_001.identification(), 40, 10);
+    assertDoesNotThrow(() -> useCase.create(warehouse));
   }
 
   @Test
   void create_rejectsWhenWarehouseCapacityExceedsLocationCapacity() {
     var useCase = new CreateWarehouseUseCase(new StubWarehouseStore(), new StubLocationResolver());
 
-    var ex = assertThrows(IllegalArgumentException.class, () -> useCase.create(
-        warehouseWithCapacityAndStock("MWH.004", Location.ZWOLLE_001.identification(), 41, 10)));
+    var warehouse = warehouseWithCapacityAndStock("MWH.004", Location.ZWOLLE_001.identification(), 41, 10);
+    var ex = assertThrows(IllegalArgumentException.class, () -> useCase.create(warehouse));
 
     assertEquals("Warehouse capacity exceeds location capacity", ex.getMessage());
   }
@@ -145,8 +135,8 @@ class CreateWarehouseUseCaseTest {
   void create_rejectsWhenStockExceedsWarehouseCapacity() {
     var useCase = new CreateWarehouseUseCase(new StubWarehouseStore(), new StubLocationResolver());
 
-    var ex = assertThrows(IllegalArgumentException.class, () -> useCase.create(
-        warehouseWithCapacityAndStock("MWH.005", Location.ZWOLLE_001.identification(), 40, 41)));
+    var warehouse = warehouseWithCapacityAndStock("MWH.005", Location.ZWOLLE_001.identification(), 40, 41);
+    var ex = assertThrows(IllegalArgumentException.class, () -> useCase.create(warehouse));
 
     assertEquals("Warehouse stock exceeds warehouse capacity", ex.getMessage());
   }
@@ -155,7 +145,8 @@ class CreateWarehouseUseCaseTest {
   void create_acceptsCapacityAndStockAtLocationLimit() {
     var useCase = new CreateWarehouseUseCase(new StubWarehouseStore(), new StubLocationResolver());
 
-    assertDoesNotThrow(() -> useCase.create(warehouseWithCapacityAndStock("MWH.006", Location.ZWOLLE_001.identification(), 40, 40)));
+    var warehouse = warehouseWithCapacityAndStock("MWH.006", Location.ZWOLLE_001.identification(), 40, 40);
+    assertDoesNotThrow(() -> useCase.create(warehouse));
   }
 
   private static Warehouse warehouse(String location, Integer capacity, Integer stock) {
@@ -181,8 +172,8 @@ class CreateWarehouseUseCaseTest {
     return warehouse;
   }
 
-  private static Warehouse archivedWarehouse(String code, String location) {
-    var warehouse = activeWarehouse(code, location);
+  private static Warehouse archivedWarehouse(String location) {
+    var warehouse = activeWarehouse("MWH.001", location);
     warehouse.archivedAt = warehouse.createdAt.plusHours(1);
     return warehouse;
   }
@@ -195,11 +186,11 @@ class CreateWarehouseUseCaseTest {
           return location;
         }
       }
-      return null;
+      throw new IllegalArgumentException("No Location found with identification: " + identifier);
     }
   }
 
-  private static final class StubWarehouseStore implements WarehouseStore {
+  private static final class StubWarehouseStore implements WarehouseRepository {
     private final List<Warehouse> warehouses = new ArrayList<>();
 
     @Override
@@ -219,16 +210,19 @@ class CreateWarehouseUseCaseTest {
     }
 
     @Override
-    public void remove(Warehouse warehouse) {
-      // intentionally empty: not used by these tests
-    }
-
-    @Override
     public Warehouse findByBusinessUnitCode(String buCode) {
       return warehouses.stream()
           .filter(existing -> existing.businessUnitCode.equals(buCode))
           .findFirst()
           .orElse(null);
+    }
+
+    @Override
+    public long countByLocation(String location) {
+      return warehouses.stream()
+          .filter(existing -> existing.archivedAt == null)
+          .filter(existing -> location.equals(existing.location))
+          .count();
     }
   }
 }

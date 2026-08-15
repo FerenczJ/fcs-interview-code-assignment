@@ -1,8 +1,8 @@
 package com.fulfilment.application.monolith.location;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
@@ -13,9 +13,9 @@ class LocationGatewayTest {
 
   @ParameterizedTest
   @EnumSource(Location.class)
-  void resolveByIdentifier_withEnumName_returnsLocationAndProperties(Location loc) {
+  void resolveByIdentifier_withIdentification_returnsLocationAndProperties(Location loc) {
     var gateway = new LocationGateway();
-    var resolved = gateway.resolveByIdentifier(loc.name());
+    var resolved = gateway.resolveByIdentifier(loc.identification());
 
     assertSame(loc, resolved);
     assertEquals(loc.identification(), resolved.identification());
@@ -25,8 +25,11 @@ class LocationGatewayTest {
   }
 
   @Test
-  void resolveByIdentifier_withInvalidName_returnsNull() {
+  void resolveByIdentifier_withInvalidIdentification_throwsIllegalArgumentException() {
     var gateway = new LocationGateway();
-    assertNull(gateway.resolveByIdentifier("UNKNOWN"));
+
+    var ex = assertThrows(IllegalArgumentException.class, () -> gateway.resolveByIdentifier("UNKNOWN"));
+
+    assertEquals("No Location found with identification: UNKNOWN", ex.getMessage());
   }
 }

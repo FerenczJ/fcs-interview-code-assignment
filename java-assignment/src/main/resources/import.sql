@@ -9,7 +9,7 @@ INSERT INTO product(id, name, stock) VALUES (3, 'BESTÅ', 3);
 ALTER SEQUENCE product_seq RESTART WITH 4;
 
 INSERT INTO warehouse(id, businessUnitCode, location, capacity, stock, createdAt, archivedAt) 
-VALUES (1, 'MWH.001', 'ZWOLLE-001', 100, 10, '2024-07-01', null);
+VALUES (1, 'MWH.001', 'ZWOLLE-001', 40, 10, '2024-07-01', null);
 INSERT INTO warehouse(id, businessUnitCode, location, capacity, stock, createdAt, archivedAt)
 VALUES (2, 'MWH.012', 'AMSTERDAM-001', 50, 5, '2023-07-01', null);
 INSERT INTO warehouse(id, businessUnitCode, location, capacity, stock, createdAt, archivedAt)

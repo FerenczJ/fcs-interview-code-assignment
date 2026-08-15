@@ -2,32 +2,38 @@ package com.fulfilment.application.monolith.warehouses.domain.usecases;
 
 import com.fulfilment.application.monolith.location.Location;
 import com.fulfilment.application.monolith.warehouses.domain.models.Warehouse;
+import com.fulfilment.application.monolith.warehouses.domain.ports.LocationResolver;
 import com.fulfilment.application.monolith.warehouses.domain.ports.ReplaceWarehouseOperation;
-import com.fulfilment.application.monolith.warehouses.domain.ports.WarehouseStore;
+import com.fulfilment.application.monolith.warehouses.domain.ports.WarehouseRepository;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.ws.rs.NotFoundException;
 
 @ApplicationScoped
 public class ReplaceWarehouseUseCase implements ReplaceWarehouseOperation {
-  private final WarehouseStore warehouseStore;
+  private final WarehouseRepository warehouseRepository;
+  private final LocationResolver locationResolver;
 
-  public ReplaceWarehouseUseCase(WarehouseStore warehouseStore) {
-    this.warehouseStore = warehouseStore;
+  public ReplaceWarehouseUseCase(WarehouseRepository warehouseRepository, LocationResolver locationResolver) {
+    this.warehouseRepository = warehouseRepository;
+    this.locationResolver = locationResolver;
   }
 
   @Override
   public void replace(Warehouse newWarehouse) {
     validateBasicData(newWarehouse);
 
-    var existingWarehouse = warehouseStore.findByBusinessUnitCode(newWarehouse.businessUnitCode);
+    var existingWarehouse = warehouseRepository.findByBusinessUnitCode(newWarehouse.businessUnitCode);
     if (existingWarehouse == null) {
-      throw new IllegalArgumentException("Warehouse not found");
+      throw new NotFoundException("Warehouse not found");
     }
 
     validateStockMatches(existingWarehouse, newWarehouse);
+    validateCapacityAccommodation(existingWarehouse, newWarehouse);
+
     var location = validateAndResolveLocation(newWarehouse.location);
     validateCapacityRules(newWarehouse, location);
 
-    warehouseStore.update(newWarehouse);
+    warehouseRepository.update(newWarehouse);
   }
 
   private void validateBasicData(Warehouse warehouse) {
@@ -45,8 +51,14 @@ public class ReplaceWarehouseUseCase implements ReplaceWarehouseOperation {
     }
   }
 
+  private void validateCapacityAccommodation(Warehouse existingWarehouse, Warehouse newWarehouse) {
+    if (newWarehouse.capacity < existingWarehouse.stock) {
+      throw new IllegalArgumentException("New warehouse capacity cannot accommodate the previous stock");
+    }
+  }
+
   private Location validateAndResolveLocation(String identifier) {
-    var location = resolveLocation(identifier);
+    var location = locationResolver.resolveByIdentifier(identifier);
     if (location == null) {
       throw new IllegalArgumentException("Location is invalid");
     }
@@ -60,14 +72,5 @@ public class ReplaceWarehouseUseCase implements ReplaceWarehouseOperation {
     if (warehouse.stock > warehouse.capacity) {
       throw new IllegalArgumentException("Warehouse stock exceeds warehouse capacity");
     }
-  }
-
-  private Location resolveLocation(String identifier) {
-    for (var location : Location.values()) {
-      if (location.identification().equals(identifier)) {
-        return location;
-      }
-    }
-    return null;
   }
 }
