@@ -2,6 +2,8 @@ package com.fulfilment.application.monolith.warehouses.domain.ports;
 
 import com.fulfilment.application.monolith.warehouses.domain.models.Warehouse;
 
-public interface ArchiveWarehouseOperation {
-  void archive(String id);
+import java.util.List;
+
+public interface ListWarehousesOperation {
+    List<Warehouse> listWarehouses();
 }

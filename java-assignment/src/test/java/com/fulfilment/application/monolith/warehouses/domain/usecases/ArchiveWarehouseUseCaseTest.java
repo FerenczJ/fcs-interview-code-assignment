@@ -3,103 +3,74 @@ package com.fulfilment.application.monolith.warehouses.domain.usecases;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.fulfilment.application.monolith.warehouses.domain.models.Warehouse;
-import com.fulfilment.application.monolith.warehouses.domain.ports.WarehouseStore;
+import com.fulfilment.application.monolith.warehouses.domain.ports.WarehouseRepository;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class ArchiveWarehouseUseCaseTest {
 
   @Test
-  void archive_setsArchivedAtAndUpdatesWarehouse() {
-    var store = new StubWarehouseStore();
-    var useCase = new ArchiveWarehouseUseCase(store);
-    var warehouse = warehouse("MWH.001", "ZWOLLE-001");
+  void archive_throwsNotFoundWhenWarehouseDoesNotExist() {
+    var useCase = new ArchiveWarehouseUseCase(new StubWarehouseRepository());
 
-    useCase.archive(warehouse);
+    var ex = assertThrows(jakarta.ws.rs.NotFoundException.class, () -> useCase.archive("MWH.404"));
 
-    var archivedWarehouse = store.findByBusinessUnitCode("MWH.001");
-    assertNotNull(archivedWarehouse.archivedAt);
-    assertTrue(archivedWarehouse.archivedAt.isAfter(archivedWarehouse.createdAt)
-        || archivedWarehouse.archivedAt.isEqual(archivedWarehouse.createdAt));
+    assertEquals("Warehouse not found", ex.getMessage());
   }
 
   @Test
-  void archive_persistsUpdatedWarehouseState() {
-    var store = new StubWarehouseStore();
-    var useCase = new ArchiveWarehouseUseCase(store);
-    var warehouse = warehouse("MWH.001", "ZWOLLE-001");
+  void archive_setsArchivedAtAndUpdatesWarehouse() {
+    var repository = new StubWarehouseRepository();
+    repository.warehouse = warehouse("MWH.001");
+    var useCase = new ArchiveWarehouseUseCase(repository);
 
-    assertDoesNotThrow(() -> useCase.archive(warehouse));
-    assertEquals(1, store.getAll().size());
-    assertEquals("MWH.001", store.getAll().get(0).businessUnitCode);
-    assertNotNull(store.getAll().get(0).archivedAt);
+    assertDoesNotThrow(() -> useCase.archive("MWH.001"));
+
+    assertNotNull(repository.warehouse.archivedAt);
+    assertEquals(repository.warehouse, repository.updatedWarehouse);
+    assertEquals("MWH.001", repository.lastRequestedBusinessUnitCode);
   }
 
-  private static Warehouse warehouse(String code, String location) {
+  private static Warehouse warehouse(String code) {
     var warehouse = new Warehouse();
     warehouse.businessUnitCode = code;
-    warehouse.location = location;
-    warehouse.capacity = 40;
-    warehouse.stock = 10;
     warehouse.createdAt = LocalDateTime.now();
     return warehouse;
   }
 
-  private static final class StubWarehouseStore implements WarehouseStore {
-    private final List<Warehouse> warehouses = new ArrayList<>();
+  private static final class StubWarehouseRepository implements WarehouseRepository {
+    private Warehouse warehouse;
+    private Warehouse updatedWarehouse;
+    private String lastRequestedBusinessUnitCode;
 
     @Override
     public List<Warehouse> getAll() {
-      return List.copyOf(warehouses);
+      return List.of();
     }
 
     @Override
     public void create(Warehouse warehouse) {
-      persist(copy(warehouse));
+      // not used in these tests
     }
 
     @Override
     public void update(Warehouse warehouse) {
-      delete(warehouse.businessUnitCode);
-      persist(copy(warehouse));
-    }
-
-    @Override
-    public void remove(Warehouse warehouse) {
-      delete(warehouse.businessUnitCode);
+      updatedWarehouse = warehouse;
     }
 
     @Override
     public Warehouse findByBusinessUnitCode(String buCode) {
-      return warehouses.stream()
-          .filter(existing -> existing.businessUnitCode.equals(buCode))
-          .findFirst()
-          .map(ArchiveWarehouseUseCaseTest::copy)
-          .orElse(null);
+      lastRequestedBusinessUnitCode = buCode;
+      return warehouse;
     }
 
-    private void persist(Warehouse warehouse) {
-      warehouses.add(warehouse);
+    @Override
+    public long countByLocation(String location) {
+      return 0;
     }
-
-    private void delete(String buCode) {
-      warehouses.removeIf(existing -> existing.businessUnitCode.equals(buCode));
-    }
-  }
-
-  private static Warehouse copy(Warehouse warehouse) {
-    var copy = new Warehouse();
-    copy.businessUnitCode = warehouse.businessUnitCode;
-    copy.location = warehouse.location;
-    copy.capacity = warehouse.capacity;
-    copy.stock = warehouse.stock;
-    copy.createdAt = warehouse.createdAt;
-    copy.archivedAt = warehouse.archivedAt;
-    return copy;
   }
 }

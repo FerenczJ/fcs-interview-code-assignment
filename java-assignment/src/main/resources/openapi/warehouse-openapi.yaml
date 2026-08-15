@@ -34,8 +34,6 @@ paths:
                 $ref: '#/components/schemas/Warehouse'
         '400':
           description: Invalid request parameters
-        '409':
-          description: Warehouse unit with the same business unit code already exists
 
   /warehouse/{id}:
     get:

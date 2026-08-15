@@ -8,10 +8,6 @@ public class LocationGateway implements LocationResolver {
 
   @Override
   public Location resolveByIdentifier(String identifier) {
-    try {
-      return Location.valueOf(identifier);
-    } catch (IllegalArgumentException | NullPointerException e) {
-      return null;
-    }
+      return Location.fromIdentification(identifier);
   }
 }

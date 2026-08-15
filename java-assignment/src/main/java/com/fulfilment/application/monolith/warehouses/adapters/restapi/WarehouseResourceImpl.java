@@ -1,140 +1,99 @@
 package com.fulfilment.application.monolith.warehouses.adapters.restapi;
 
-import com.fulfilment.application.monolith.location.Location;
-import com.fulfilment.application.monolith.warehouses.adapters.database.WarehouseRepository;
+import com.fulfilment.application.monolith.warehouses.domain.ports.*;
+import com.fulfilment.application.monolith.warehouses.domain.usecases.ArchiveWarehouseUseCase;
+import com.fulfilment.application.monolith.warehouses.domain.usecases.CreateWarehouseUseCase;
+import com.fulfilment.application.monolith.warehouses.domain.usecases.ReplaceWarehouseUseCase;
 import com.warehouse.api.WarehouseResource;
 import com.warehouse.api.beans.Warehouse;
 import jakarta.enterprise.context.RequestScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
-import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
+import jakarta.ws.rs.NotFoundException;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response;
-import java.time.LocalDateTime;
 import java.util.List;
 
 @RequestScoped
 public class WarehouseResourceImpl implements WarehouseResource {
 
-  private static final int MAX_WAREHOUSES_PER_LOCATION = 2;
-
-  private final WarehouseRepository warehouseRepository;
+  private final ArchiveWarehouseOperation archiveWarehouseOperation;
+  private final CreateWarehouseOperation createWarehouseOperation;
+  private final ReplaceWarehouseOperation replaceWarehouseOperation;
+  private final GetWarehouseOperation warehouseOperation;
+  private final ListWarehousesOperation listWarehousesOperation;
 
   @Inject
-  public WarehouseResourceImpl(WarehouseRepository warehouseRepository) {
-    this.warehouseRepository = warehouseRepository;
+  public WarehouseResourceImpl(ArchiveWarehouseOperation archiveWarehouseUseCase,
+                               CreateWarehouseOperation createWarehouseUseCase,
+                               ReplaceWarehouseOperation replaceWarehouseUseCase,
+                               GetWarehouseOperation getWarehouseOperation,
+                               ListWarehousesOperation listWarehousesOperation) {
+    this.archiveWarehouseOperation = archiveWarehouseUseCase;
+    this.createWarehouseOperation = createWarehouseUseCase;
+    this.replaceWarehouseOperation = replaceWarehouseUseCase;
+    this.warehouseOperation = getWarehouseOperation;
+    this.listWarehousesOperation = listWarehousesOperation;
   }
 
   @Override
   public List<Warehouse> listAllWarehousesUnits() {
-    return warehouseRepository.getAll().stream().map(this::toWarehouseResponse).toList();
+    return listWarehousesOperation.listWarehouses()
+                .stream()
+                .map(this::toWarehouseResponse)
+                .toList();
   }
 
   @Override
   @Transactional
-  public Warehouse createANewWarehouseUnit(@NotNull @Valid Warehouse data) {
-    if (warehouseRepository.findByBusinessUnitCode(data.getBusinessUnitCode()) != null) {
-      throw new WebApplicationException("Business unit code already exists", Response.Status.CONFLICT);
+  public Warehouse createANewWarehouseUnit(@NotNull Warehouse data) {
+    try {
+      createWarehouseOperation.create(toDomainWarehouse(data));
+      return data;
+    } catch (IllegalArgumentException e) {
+      throw new WebApplicationException("Cannot create warehouse: " + e.getMessage(), Response.Status.BAD_REQUEST);
     }
-
-    var location = validateAndResolveLocation(data.getLocation());
-    var domain = toDomainWarehouse(data);
-    validateCapacityAndStock(domain, location);
-    validateWarehouseCreationFeasibility(location);
-
-    domain.createdAt = LocalDateTime.now();
-    warehouseRepository.create(domain);
-    return toWarehouseResponse(domain);
   }
 
   @Override
   public Warehouse getAWarehouseUnitByID(String id) {
-    var warehouse = warehouseRepository.findByBusinessUnitCode(id);
-    if (warehouse == null) {
-      throw notFound();
-    }
+    var warehouse = warehouseOperation.get(id);
+    if (warehouse == null) throw notFound();
+
     return toWarehouseResponse(warehouse);
   }
 
   @Override
   @Transactional
   public void archiveAWarehouseUnitByID(String id) {
-    var warehouse = warehouseRepository.findByBusinessUnitCode(id);
-    if (warehouse == null) {
-      throw notFound();
+    try {
+      archiveWarehouseOperation.archive(id);
+    } catch (NotFoundException e) {
+      throw new WebApplicationException("Cannot archive warehouse: " + e.getMessage(), Response.Status.NOT_FOUND);
     }
-    warehouse.archivedAt = LocalDateTime.now();
-    warehouseRepository.update(warehouse);
   }
 
   @Override
   @Transactional
-  public Warehouse replaceTheCurrentActiveWarehouse(String businessUnitCode, @NotNull @Valid Warehouse data) {
-    var current = warehouseRepository.findByBusinessUnitCode(businessUnitCode);
-    if (current == null) {
-      throw notFound();
+  public Warehouse replaceTheCurrentActiveWarehouse(String businessUnitCode, @NotNull Warehouse data) {
+    try {
+      var replacement = toDomainWarehouse(data);
+      replacement.businessUnitCode = businessUnitCode;
+
+      archiveWarehouseOperation.archive(businessUnitCode);
+      replaceWarehouseOperation.replace(replacement);
+
+      return data;
+    } catch (NotFoundException e) {
+      throw new WebApplicationException("Cannot replace warehouse: " + e.getMessage(), Response.Status.NOT_FOUND);
+    } catch (IllegalArgumentException e) {
+      throw new WebApplicationException("Cannot replace warehouse: " + e.getMessage(), Response.Status.BAD_REQUEST);
     }
-
-    var location = validateAndResolveLocation(data.getLocation());
-    var replacement = toDomainWarehouse(data);
-    replacement.businessUnitCode = businessUnitCode;
-    validateCapacityAndStock(replacement, location);
-
-    current.archivedAt = LocalDateTime.now();
-    warehouseRepository.update(current);
-
-    replacement.createdAt = LocalDateTime.now();
-    warehouseRepository.create(replacement);
-    return toWarehouseResponse(replacement);
   }
 
   private WebApplicationException notFound() {
     return new WebApplicationException("Warehouse unit not found", Response.Status.NOT_FOUND);
-  }
-
-  private Location validateAndResolveLocation(String locationIdentifier) {
-    var location = resolveLocation(locationIdentifier);
-    if (location == null) {
-      throw new WebApplicationException("Location is invalid", Response.Status.BAD_REQUEST);
-    }
-    return location;
-  }
-
-  private void validateCapacityAndStock(
-      com.fulfilment.application.monolith.warehouses.domain.models.Warehouse warehouse, Location location) {
-    if (warehouse.capacity == null || warehouse.stock == null) {
-      throw new WebApplicationException("Warehouse capacity or stock is invalid", Response.Status.BAD_REQUEST);
-    }
-    if (warehouse.capacity > location.capacity()) {
-      throw new WebApplicationException("Warehouse capacity exceeds location capacity", Response.Status.BAD_REQUEST);
-    }
-    if (warehouse.stock > warehouse.capacity) {
-      throw new WebApplicationException("Warehouse stock exceeds warehouse capacity", Response.Status.BAD_REQUEST);
-    }
-  }
-
-  private void validateWarehouseCreationFeasibility(Location location) {
-    if (!canCreateWarehouseAtLocation(location)) {
-      throw new WebApplicationException("Maximum number of warehouses reached for location", Response.Status.CONFLICT);
-    }
-  }
-
-  private boolean canCreateWarehouseAtLocation(Location location) {
-    return warehouseRepository.getAll().stream()
-        .filter(existing -> location.identification().equals(existing.location))
-        .filter(existing -> existing.archivedAt == null)
-        .count()
-        < MAX_WAREHOUSES_PER_LOCATION;
-  }
-
-  private Location resolveLocation(String locationIdentifier) {
-    for (var location : Location.values()) {
-      if (location.identification().equals(locationIdentifier)) {
-        return location;
-      }
-    }
-    return null;
   }
 
   private com.fulfilment.application.monolith.warehouses.domain.models.Warehouse toDomainWarehouse(

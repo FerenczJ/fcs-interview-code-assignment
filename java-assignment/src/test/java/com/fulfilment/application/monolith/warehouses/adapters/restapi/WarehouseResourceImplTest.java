@@ -1,277 +1,370 @@
 package com.fulfilment.application.monolith.warehouses.adapters.restapi;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
-import com.fulfilment.application.monolith.warehouses.adapters.database.WarehouseRepository;
 import com.fulfilment.application.monolith.warehouses.domain.models.Warehouse;
+import com.fulfilment.application.monolith.warehouses.domain.ports.ArchiveWarehouseOperation;
+import com.fulfilment.application.monolith.warehouses.domain.ports.CreateWarehouseOperation;
+import com.fulfilment.application.monolith.warehouses.domain.ports.GetWarehouseOperation;
+import com.fulfilment.application.monolith.warehouses.domain.ports.ListWarehousesOperation;
+import com.fulfilment.application.monolith.warehouses.domain.ports.ReplaceWarehouseOperation;
+import jakarta.ws.rs.NotFoundException;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
 class WarehouseResourceImplTest {
 
   @Test
-  void listAllWarehousesUnits_returnsAllWarehouses() {
-    var repository = new StubWarehouseRepository();
-    repository.create(warehouse("MWH.001", "ZWOLLE-001", 100, 10));
-    repository.create(warehouse("MWH.002", "AMSTERDAM-001", 50, 5));
+  void listAllWarehousesUnits_mapsDomainWarehousesToApiWarehouses() {
+    var warehouse1 = warehouse("MWH.001", "London", 100, 25);
+    var warehouse2 = warehouse("MWH.002", "Berlin", 200, 75);
+    var listOperation = new RecordingListWarehousesOperation(List.of(warehouse1, warehouse2));
+    var resource = new WarehouseResourceImpl(
+        new NoopArchiveWarehouseUseCase(),
+        new NoopCreateWarehouseUseCase(),
+        new NoopReplaceWarehouseUseCase(),
+        new NoopGetWarehouseOperation(null),
+        listOperation);
 
-    var resource = new WarehouseResourceImpl(repository);
-    var response = resource.listAllWarehousesUnits();
+    var result = resource.listAllWarehousesUnits();
 
-    assertEquals(2, response.size());
+    assertEquals(2, result.size());
+    assertEquals("MWH.001", result.get(0).getBusinessUnitCode());
+    assertEquals("London", result.get(0).getLocation());
+    assertEquals(100, result.get(0).getCapacity());
+    assertEquals(25, result.get(0).getStock());
+    assertEquals("MWH.002", result.get(1).getBusinessUnitCode());
+    assertEquals("Berlin", result.get(1).getLocation());
+    assertEquals(200, result.get(1).getCapacity());
+    assertEquals(75, result.get(1).getStock());
+    assertEquals(1, listOperation.calls);
   }
 
   @Test
-  void createANewWarehouseUnit_returnsCreatedWarehouse() {
-    var repository = new StubWarehouseRepository();
-    var resource = new WarehouseResourceImpl(repository);
+  void createANewWarehouseUnit_delegatesToCreateOperation_andReturnsInput() {
+    var apiWarehouse = apiWarehouse("MWH.003", "Paris", 150, 60);
+    var createOperation = new RecordingCreateWarehouseUseCase();
+    var resource = new WarehouseResourceImpl(
+        new NoopArchiveWarehouseUseCase(),
+        createOperation,
+        new NoopReplaceWarehouseUseCase(),
+        new NoopGetWarehouseOperation(null),
+        new RecordingListWarehousesOperation(List.of()));
 
-    var request = beanWarehouse("MWH.001", "ZWOLLE-001", 40, 10);
-    var response = resource.createANewWarehouseUnit(request);
+    var result = resource.createANewWarehouseUnit(apiWarehouse);
 
-    assertEquals("MWH.001", response.getBusinessUnitCode());
-    assertEquals("ZWOLLE-001", response.getLocation());
-    assertEquals(40, response.getCapacity());
-    assertEquals(10, response.getStock());
+    assertSame(apiWarehouse, result);
+    assertEquals(1, createOperation.calls);
+    assertEquals("MWH.003", createOperation.lastWarehouse.businessUnitCode);
+    assertEquals("Paris", createOperation.lastWarehouse.location);
+    assertEquals(150, createOperation.lastWarehouse.capacity);
+    assertEquals(60, createOperation.lastWarehouse.stock);
   }
 
   @Test
-  void createANewWarehouseUnit_rejectsDuplicateBusinessUnitCodeWithConflict() {
-    var repository = new StubWarehouseRepository();
-    repository.create(warehouse("MWH.001", "ZWOLLE-001", 100, 10));
-
-    var resource = new WarehouseResourceImpl(repository);
+  void createANewWarehouseUnit_mapsIllegalArgumentExceptionToBadRequest() {
+    var resource = new WarehouseResourceImpl(
+        new NoopArchiveWarehouseUseCase(),
+        new RecordingCreateWarehouseUseCase(new IllegalArgumentException("Warehouse data is invalid")),
+        new NoopReplaceWarehouseUseCase(),
+        new NoopGetWarehouseOperation(null),
+        new RecordingListWarehousesOperation(List.of()));
 
     var ex = assertThrows(WebApplicationException.class,
-        () -> resource.createANewWarehouseUnit(beanWarehouse("MWH.001", "AMSTERDAM-001", 50, 5)));
-    assertEquals(Response.Status.CONFLICT.getStatusCode(), ex.getResponse().getStatus());
-    assertEquals("Business unit code already exists", ex.getMessage());
+        () -> resource.createANewWarehouseUnit(invalidCreatePayload()));
+
+    assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), ex.getResponse().getStatus());
+    assertEquals("Cannot create warehouse: Warehouse data is invalid", ex.getMessage());
   }
 
   @Test
-  void createANewWarehouseUnit_rejectsWarehouseCapacityExceedingLocationCapacity() {
-    var resource = new WarehouseResourceImpl(new StubWarehouseRepository());
+  void getAWarehouseUnitByID_returnsMappedApiWarehouse_whenFound() {
+    var domainWarehouse = warehouse("MWH.004", "Madrid", 90, 12);
+    var getOperation = new RecordingGetWarehouseOperation(domainWarehouse);
+    var resource = new WarehouseResourceImpl(
+        new NoopArchiveWarehouseUseCase(),
+        new NoopCreateWarehouseUseCase(),
+        new NoopReplaceWarehouseUseCase(),
+        getOperation,
+        new RecordingListWarehousesOperation(List.of()));
+
+    var result = resource.getAWarehouseUnitByID("MWH.004");
+
+    assertEquals("MWH.004", result.getBusinessUnitCode());
+    assertEquals("Madrid", result.getLocation());
+    assertEquals(90, result.getCapacity());
+    assertEquals(12, result.getStock());
+    assertEquals("MWH.004", getOperation.lastRequestedId);
+  }
+
+  @Test
+  void getAWarehouseUnitByID_throwsNotFoundWhenWarehouseIsMissing() {
+    var resource = new WarehouseResourceImpl(
+        new NoopArchiveWarehouseUseCase(),
+        new NoopCreateWarehouseUseCase(),
+        new NoopReplaceWarehouseUseCase(),
+        new NoopGetWarehouseOperation(null),
+        new RecordingListWarehousesOperation(List.of()));
+
+    var ex = assertThrows(WebApplicationException.class, () -> resource.getAWarehouseUnitByID("missing"));
+
+    assertEquals(Response.Status.NOT_FOUND.getStatusCode(), ex.getResponse().getStatus());
+    assertEquals("Warehouse unit not found", ex.getMessage());
+  }
+
+  @Test
+  void archiveAWarehouseUnitByID_delegatesToArchiveOperation() {
+    var archiveOperation = new RecordingArchiveWarehouseUseCase();
+    var resource = new WarehouseResourceImpl(
+        archiveOperation,
+        new NoopCreateWarehouseUseCase(),
+        new NoopReplaceWarehouseUseCase(),
+        new NoopGetWarehouseOperation(null),
+        new RecordingListWarehousesOperation(List.of()));
+
+    resource.archiveAWarehouseUnitByID("MWH.005");
+
+    assertEquals(1, archiveOperation.calls);
+    assertEquals("MWH.005", archiveOperation.lastArchivedId);
+  }
+
+  @Test
+  void archiveAWarehouseUnitByID_mapsNotFoundExceptionToNotFoundStatus() {
+    var archiveOperation = new RecordingArchiveWarehouseUseCase(new NotFoundException("Warehouse not found"));
+    var resource = new WarehouseResourceImpl(
+        archiveOperation,
+        new NoopCreateWarehouseUseCase(),
+        new NoopReplaceWarehouseUseCase(),
+        new NoopGetWarehouseOperation(null),
+        new RecordingListWarehousesOperation(List.of()));
+
+    var ex = assertThrows(WebApplicationException.class, () -> resource.archiveAWarehouseUnitByID("MWH.005"));
+
+    assertEquals(Response.Status.NOT_FOUND.getStatusCode(), ex.getResponse().getStatus());
+    assertEquals("Cannot archive warehouse: Warehouse not found", ex.getMessage());
+  }
+
+  @Test
+  void replaceTheCurrentActiveWarehouse_archivesAndReplaces_usingPathBusinessUnitCode() {
+    var archiveOperation = new RecordingArchiveWarehouseUseCase();
+    var replaceOperation = new RecordingReplaceWarehouseUseCase();
+    var resource = new WarehouseResourceImpl(
+        archiveOperation,
+        new NoopCreateWarehouseUseCase(),
+        replaceOperation,
+        new NoopGetWarehouseOperation(null),
+        new RecordingListWarehousesOperation(List.of()));
+    var payload = apiWarehouse("IGNORED", "Rome", 120, 40);
+
+    var result = resource.replaceTheCurrentActiveWarehouse("MWH.006", payload);
+
+    assertSame(payload, result);
+    assertEquals(1, archiveOperation.calls);
+    assertEquals("MWH.006", archiveOperation.lastArchivedId);
+    assertEquals(1, replaceOperation.calls);
+    assertEquals("MWH.006", replaceOperation.lastWarehouse.businessUnitCode);
+    assertEquals("Rome", replaceOperation.lastWarehouse.location);
+    assertEquals(120, replaceOperation.lastWarehouse.capacity);
+    assertEquals(40, replaceOperation.lastWarehouse.stock);
+  }
+
+  @Test
+  void replaceTheCurrentActiveWarehouse_mapsNotFoundExceptionToNotFoundStatus() {
+    var archiveOperation = new RecordingArchiveWarehouseUseCase(new NotFoundException("Warehouse not found"));
+    var resource = new WarehouseResourceImpl(
+        archiveOperation,
+        new NoopCreateWarehouseUseCase(),
+        new RecordingReplaceWarehouseUseCase(),
+        new NoopGetWarehouseOperation(null),
+        new RecordingListWarehousesOperation(List.of()));
 
     var ex = assertThrows(WebApplicationException.class,
-        () -> resource.createANewWarehouseUnit(beanWarehouse("MWH.001", "ZWOLLE-001", 41, 10)));
+        () -> resource.replaceTheCurrentActiveWarehouse("MWH.006", invalidReplacePayload()));
 
-    assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), ex.getResponse().getStatus());
-    assertEquals("Warehouse capacity exceeds location capacity", ex.getMessage());
+    assertEquals(Response.Status.NOT_FOUND.getStatusCode(), ex.getResponse().getStatus());
+    assertEquals("Cannot replace warehouse: Warehouse not found", ex.getMessage());
   }
 
   @Test
-  void createANewWarehouseUnit_rejectsStockExceedingWarehouseCapacity() {
-    var resource = new WarehouseResourceImpl(new StubWarehouseRepository());
+  void replaceTheCurrentActiveWarehouse_mapsIllegalArgumentExceptionToBadRequest() {
+    var replaceOperation = new RecordingReplaceWarehouseUseCase(new IllegalArgumentException("Warehouse data is invalid"));
+    var resource = new WarehouseResourceImpl(
+        new NoopArchiveWarehouseUseCase(),
+        new NoopCreateWarehouseUseCase(),
+        replaceOperation,
+        new NoopGetWarehouseOperation(null),
+        new RecordingListWarehousesOperation(List.of()));
 
     var ex = assertThrows(WebApplicationException.class,
-        () -> resource.createANewWarehouseUnit(beanWarehouse("MWH.001", "ZWOLLE-001", 40, 41)));
+        () -> resource.replaceTheCurrentActiveWarehouse("MWH.006", invalidReplacePayload()));
 
     assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), ex.getResponse().getStatus());
-    assertEquals("Warehouse stock exceeds warehouse capacity", ex.getMessage());
+    assertEquals("Cannot replace warehouse: Warehouse data is invalid", ex.getMessage());
   }
 
-  @Test
-  void createANewWarehouseUnit_persistsWarehouseWhenPayloadIsProvided() {
-    var repository = new StubWarehouseRepository();
-    var resource = new WarehouseResourceImpl(repository);
-
-    var request = beanWarehouse("MWH.001", "ZWOLLE-001", 40, 10);
-    resource.createANewWarehouseUnit(request);
-
-    assertEquals(1, repository.getAll().size());
-  }
-
-  @Test
-  void getAWarehouseUnitByID_returnsMappedWarehouse() {
-    var repository = new StubWarehouseRepository();
-    repository.create(warehouse("MWH.001", "ZWOLLE-001", 100, 10));
-
-    var resource = new WarehouseResourceImpl(repository);
-    var response = resource.getAWarehouseUnitByID("MWH.001");
-
-    assertEquals("MWH.001", response.getBusinessUnitCode());
-    assertEquals("ZWOLLE-001", response.getLocation());
-  }
-
-  @Test
-  void getAWarehouseUnitByID_returnsNotFoundWhenMissing() {
-    var resource = new WarehouseResourceImpl(new StubWarehouseRepository());
-
-    var ex = assertThrows(WebApplicationException.class, () -> resource.getAWarehouseUnitByID("MISSING"));
-    assertEquals(Response.Status.NOT_FOUND.getStatusCode(), ex.getResponse().getStatus());
-    assertEquals("Warehouse unit not found", ex.getMessage());
-  }
-
-  @Test
-  void archiveAWarehouseUnitByID_marksWarehouseAsArchived() {
-    var repository = new StubWarehouseRepository();
-    repository.create(warehouse("MWH.001", "ZWOLLE-001", 100, 10));
-    var resource = new WarehouseResourceImpl(repository);
-
-    resource.archiveAWarehouseUnitByID("MWH.001");
-
-    var archivedWarehouse = repository.findByBusinessUnitCode("MWH.001");
-    assertEquals("MWH.001", archivedWarehouse.businessUnitCode);
-    assertNotNull(archivedWarehouse.archivedAt);
-    assertTrue(
-        archivedWarehouse.archivedAt.isAfter(archivedWarehouse.createdAt)
-            || archivedWarehouse.archivedAt.isEqual(archivedWarehouse.createdAt));
-  }
-
-  @Test
-  void archiveAWarehouseUnitByID_returnsNotFoundWhenMissing() {
-    var resource = new WarehouseResourceImpl(new StubWarehouseRepository());
-
-    var ex = assertThrows(WebApplicationException.class, () -> resource.archiveAWarehouseUnitByID("MISSING"));
-    assertEquals(Response.Status.NOT_FOUND.getStatusCode(), ex.getResponse().getStatus());
-    assertEquals("Warehouse unit not found", ex.getMessage());
-  }
-
-  @Test
-  void replaceTheCurrentActiveWarehouse_returnsReplacementWarehouse() {
-    var repository = new StubWarehouseRepository();
-    repository.create(warehouse("MWH.001", "ZWOLLE-001", 100, 10));
-    var resource = new WarehouseResourceImpl(repository);
-
-    var response = resource.replaceTheCurrentActiveWarehouse(
-        "MWH.001", beanWarehouse("MWH.999", "AMSTERDAM-001", 50, 5));
-
-    assertEquals("MWH.001", response.getBusinessUnitCode());
-    assertEquals("AMSTERDAM-001", response.getLocation());
-    assertEquals(50, response.getCapacity());
-    assertEquals(5, response.getStock());
-
-    var activeWarehouses = repository.listActiveWarehouses();
-    assertEquals(1, activeWarehouses.size());
-    assertEquals("MWH.001", activeWarehouses.get(0).businessUnitCode);
-    assertEquals("AMSTERDAM-001", activeWarehouses.get(0).location);
-    assertEquals(50, activeWarehouses.get(0).capacity);
-    assertEquals(5, activeWarehouses.get(0).stock);
-  }
-
-  @Test
-  void replaceTheCurrentActiveWarehouse_returnsNotFoundWhenMissing() {
-    var resource = new WarehouseResourceImpl(new StubWarehouseRepository());
-    Runnable request = () -> resource.replaceTheCurrentActiveWarehouse(
-        "MISSING", beanWarehouse("MWH.999", "AMSTERDAM-001", 50, 5));
-
-    var ex = assertThrows(WebApplicationException.class, request::run);
-    assertEquals(Response.Status.NOT_FOUND.getStatusCode(), ex.getResponse().getStatus());
-    assertEquals("Warehouse unit not found", ex.getMessage());
-  }
-
-  @Test
-  void replaceTheCurrentActiveWarehouse_returnsBadRequestWhenCapacityExceedsLocationCapacity() {
-    var repository = new StubWarehouseRepository();
-    repository.create(warehouse("MWH.001", "ZWOLLE-001", 100, 10));
-    var resource = new WarehouseResourceImpl(repository);
-    Runnable request = () -> resource.replaceTheCurrentActiveWarehouse(
-        "MWH.001", beanWarehouse("MWH.999", "ZWOLLE-001", 41, 10));
-
-    var ex = assertThrows(WebApplicationException.class, request::run);
-    assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), ex.getResponse().getStatus());
-    assertEquals("Warehouse capacity exceeds location capacity", ex.getMessage());
-  }
-
-  @Test
-  void replaceTheCurrentActiveWarehouse_returnsBadRequestWhenStockExceedsWarehouseCapacity() {
-    var repository = new StubWarehouseRepository();
-    repository.create(warehouse("MWH.001", "ZWOLLE-001", 100, 10));
-    var resource = new WarehouseResourceImpl(repository);
-    Runnable request = () -> resource.replaceTheCurrentActiveWarehouse(
-        "MWH.001", beanWarehouse("MWH.999", "ZWOLLE-001", 40, 41));
-
-    var ex = assertThrows(WebApplicationException.class, request::run);
-    assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), ex.getResponse().getStatus());
-    assertEquals("Warehouse stock exceeds warehouse capacity", ex.getMessage());
-  }
-
-  @Test
-  void replaceTheCurrentActiveWarehouse_returnsNotFoundWhenPayloadIsInvalidAndTargetWarehouseIsMissing() {
-    var resource = new WarehouseResourceImpl(new StubWarehouseRepository());
-
-    var invalidRequest = new com.warehouse.api.beans.Warehouse();
-    invalidRequest.setBusinessUnitCode("MWH.999");
-    Runnable request = () -> resource.replaceTheCurrentActiveWarehouse("MISSING", invalidRequest);
-
-    var ex = assertThrows(WebApplicationException.class, request::run);
-    assertEquals(Response.Status.NOT_FOUND.getStatusCode(), ex.getResponse().getStatus());
-    assertEquals("Warehouse unit not found", ex.getMessage());
-  }
-
-  private static Warehouse warehouse(String code, String location, Integer capacity, Integer stock) {
+  private static Warehouse warehouse(String businessUnitCode, String location, int capacity, int stock) {
     var warehouse = new Warehouse();
-    warehouse.businessUnitCode = code;
+    warehouse.businessUnitCode = businessUnitCode;
     warehouse.location = location;
     warehouse.capacity = capacity;
     warehouse.stock = stock;
-    warehouse.createdAt = LocalDateTime.now();
     return warehouse;
   }
 
-  private static com.warehouse.api.beans.Warehouse beanWarehouse(
-      String code, String location, Integer capacity, Integer stock) {
+  private static com.warehouse.api.beans.Warehouse apiWarehouse(String businessUnitCode, String location, int capacity, int stock) {
     var warehouse = new com.warehouse.api.beans.Warehouse();
-    warehouse.setBusinessUnitCode(code);
+    warehouse.setBusinessUnitCode(businessUnitCode);
     warehouse.setLocation(location);
     warehouse.setCapacity(capacity);
     warehouse.setStock(stock);
     return warehouse;
   }
 
-  private static final class StubWarehouseRepository extends WarehouseRepository {
-    private final List<Warehouse> warehouses = new ArrayList<>();
+  private static com.warehouse.api.beans.Warehouse invalidCreatePayload() {
+    return apiWarehouse("MWH.003", "Paris", 150, 60);
+  }
+
+  private static com.warehouse.api.beans.Warehouse invalidReplacePayload() {
+    return apiWarehouse("IGNORED", "Rome", 120, 40);
+  }
+
+  private static class NoopArchiveWarehouseUseCase implements ArchiveWarehouseOperation {
+    @Override
+    public void archive(String businessUnitCode) {
+      // no-op
+    }
+  }
+
+  private static class RecordingArchiveWarehouseUseCase implements ArchiveWarehouseOperation {
+    private final RuntimeException toThrow;
+    private int calls;
+    private String lastArchivedId;
+
+    private RecordingArchiveWarehouseUseCase() {
+      this(null);
+    }
+
+    private RecordingArchiveWarehouseUseCase(RuntimeException toThrow) {
+      this.toThrow = toThrow;
+    }
 
     @Override
-    public List<Warehouse> getAll() {
-      return List.copyOf(warehouses);
+    public void archive(String businessUnitCode) {
+      calls++;
+      lastArchivedId = businessUnitCode;
+      if (toThrow != null) {
+        throw toThrow;
+      }
+    }
+  }
+
+  private static class NoopCreateWarehouseUseCase implements CreateWarehouseOperation {
+    @Override
+    public void create(Warehouse warehouse) {
+      // no-op
+    }
+  }
+
+  private static class RecordingCreateWarehouseUseCase implements CreateWarehouseOperation {
+    private final RuntimeException toThrow;
+    private int calls;
+    private Warehouse lastWarehouse;
+
+    private RecordingCreateWarehouseUseCase() {
+      this(null);
+    }
+
+    private RecordingCreateWarehouseUseCase(RuntimeException toThrow) {
+      this.toThrow = toThrow;
     }
 
     @Override
     public void create(Warehouse warehouse) {
-      warehouses.removeIf(existing -> existing.businessUnitCode.equals(warehouse.businessUnitCode));
-      warehouses.add(copy(warehouse));
-    }
-
-    @Override
-    public void update(Warehouse warehouse) {
-      create(warehouse);
-    }
-
-    @Override
-    public void remove(Warehouse warehouse) {
-      warehouses.removeIf(existing -> existing.businessUnitCode.equals(warehouse.businessUnitCode));
-    }
-
-    @Override
-    public Warehouse findByBusinessUnitCode(String buCode) {
-      return warehouses.stream()
-          .filter(existing -> existing.businessUnitCode.equals(buCode))
-          .findFirst()
-          .map(WarehouseResourceImplTest::copy)
-          .orElse(null);
-    }
-
-    private List<Warehouse> listActiveWarehouses() {
-      return warehouses.stream().filter(existing -> existing.archivedAt == null).map(WarehouseResourceImplTest::copy).toList();
+      calls++;
+      lastWarehouse = warehouse;
+      if (toThrow != null) {
+        throw toThrow;
+      }
     }
   }
 
-  private static Warehouse copy(Warehouse warehouse) {
-    var copy = new Warehouse();
-    copy.businessUnitCode = warehouse.businessUnitCode;
-    copy.location = warehouse.location;
-    copy.capacity = warehouse.capacity;
-    copy.stock = warehouse.stock;
-    copy.createdAt = warehouse.createdAt;
-    copy.archivedAt = warehouse.archivedAt;
-    return copy;
+  private static class NoopReplaceWarehouseUseCase implements ReplaceWarehouseOperation {
+    @Override
+    public void replace(Warehouse warehouse) {
+      // no-op
+    }
+  }
+
+  private static class RecordingReplaceWarehouseUseCase implements ReplaceWarehouseOperation {
+    private final RuntimeException toThrow;
+    private int calls;
+    private Warehouse lastWarehouse;
+
+    private RecordingReplaceWarehouseUseCase() {
+      this(null);
+    }
+
+    private RecordingReplaceWarehouseUseCase(RuntimeException toThrow) {
+      this.toThrow = toThrow;
+    }
+
+    @Override
+    public void replace(Warehouse warehouse) {
+      calls++;
+      lastWarehouse = warehouse;
+      if (toThrow != null) {
+        throw toThrow;
+      }
+    }
+  }
+
+  private static class NoopGetWarehouseOperation implements GetWarehouseOperation {
+    private final Warehouse warehouse;
+    private String lastRequestedId;
+
+    private NoopGetWarehouseOperation(Warehouse warehouse) {
+      this.warehouse = warehouse;
+    }
+
+    @Override
+    public Warehouse get(String id) {
+      lastRequestedId = id;
+      return warehouse;
+    }
+  }
+
+  private static class RecordingGetWarehouseOperation implements GetWarehouseOperation {
+    private final Warehouse warehouse;
+    private String lastRequestedId;
+
+    private RecordingGetWarehouseOperation(Warehouse warehouse) {
+      this.warehouse = warehouse;
+    }
+
+    @Override
+    public Warehouse get(String id) {
+      lastRequestedId = id;
+      return warehouse;
+    }
+  }
+
+  private static class RecordingListWarehousesOperation implements ListWarehousesOperation {
+    private final List<Warehouse> warehouses;
+    private int calls;
+
+    private RecordingListWarehousesOperation(List<Warehouse> warehouses) {
+      this.warehouses = new ArrayList<>(warehouses);
+    }
+
+    @Override
+    public List<Warehouse> listWarehouses() {
+      calls++;
+      return warehouses;
+    }
   }
 }
