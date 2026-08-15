@@ -33,7 +33,7 @@ public class ReplaceWarehouseUseCase implements ReplaceWarehouseOperation {
     var location = validateAndResolveLocation(newWarehouse.location);
     validateCapacityRules(newWarehouse, location);
 
-    warehouseRepository.update(newWarehouse);
+    warehouseRepository.create(newWarehouse);
   }
 
   private void validateBasicData(Warehouse warehouse) {

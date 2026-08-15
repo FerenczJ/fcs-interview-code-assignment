@@ -2,7 +2,6 @@ package com.fulfilment.application.monolith.warehouses.domain.usecases;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -153,7 +152,7 @@ class ReplaceWarehouseUseCaseTest {
   }
 
   @Test
-  void replace_acceptsValidWarehouseAndUpdatesRepository() {
+  void replace_acceptsValidWarehouseAndCreatesRepositoryEntry() {
     var repository = new StubWarehouseRepository();
     repository.warehouse = warehouse("MWH.001", Location.ZWOLLE_001.identification(), 40, 10);
     var useCase = new ReplaceWarehouseUseCase(repository, new StubLocationResolver());
@@ -162,7 +161,7 @@ class ReplaceWarehouseUseCaseTest {
 
     assertDoesNotThrow(() -> useCase.replace(replacement));
 
-    assertSame(replacement, repository.updatedWarehouse);
+    assertSame(replacement, repository.createdWarehouse);
     assertEquals("MWH.001", repository.lastRequestedBusinessUnitCode);
   }
 
@@ -189,7 +188,7 @@ class ReplaceWarehouseUseCaseTest {
 
   private static final class StubWarehouseRepository implements WarehouseRepository {
     private Warehouse warehouse;
-    private Warehouse updatedWarehouse;
+    private Warehouse createdWarehouse;
     private String lastRequestedBusinessUnitCode;
 
     @Override
@@ -199,12 +198,12 @@ class ReplaceWarehouseUseCaseTest {
 
     @Override
     public void create(Warehouse warehouse) {
-      // not used in these tests
+      createdWarehouse = warehouse;
     }
 
     @Override
     public void update(Warehouse warehouse) {
-      updatedWarehouse = warehouse;
+      // not used in these tests
     }
 
     @Override
