@@ -1,5 +1,10 @@
 package com.fulfilment.application.monolith.warehouses.adapters.restapi;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
+import com.fulfilment.application.monolith.warehouses.adapters.restapi.mapper.WarehouseResourceMapper;
 import com.fulfilment.application.monolith.warehouses.domain.models.Warehouse;
 import com.fulfilment.application.monolith.warehouses.domain.ports.ArchiveWarehouseOperation;
 import com.fulfilment.application.monolith.warehouses.domain.ports.CreateWarehouseOperation;
@@ -9,15 +14,13 @@ import com.fulfilment.application.monolith.warehouses.domain.ports.ReplaceWareho
 import jakarta.ws.rs.NotFoundException;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response;
-import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import org.mapstruct.factory.Mappers;
 
 class WarehouseResourceImplTest {
+
+  private final WarehouseResourceMapper mapper = Mappers.getMapper(WarehouseResourceMapper.class);
 
   @Test
   void listAllWarehousesUnits_mapsDomainWarehousesToApiWarehouses() {
@@ -29,7 +32,8 @@ class WarehouseResourceImplTest {
         new NoopCreateWarehouseUseCase(),
         new NoopReplaceWarehouseUseCase(),
         new NoopGetWarehouseOperation(null),
-        listOperation);
+        listOperation,
+        mapper);
 
     var result = resource.listAllWarehousesUnits();
 
@@ -54,7 +58,8 @@ class WarehouseResourceImplTest {
         createOperation,
         new NoopReplaceWarehouseUseCase(),
         new NoopGetWarehouseOperation(null),
-        new RecordingListWarehousesOperation(List.of()));
+        new RecordingListWarehousesOperation(List.of()),
+        mapper);
 
     var result = resource.createANewWarehouseUnit(apiWarehouse);
 
@@ -73,7 +78,8 @@ class WarehouseResourceImplTest {
         new RecordingCreateWarehouseUseCase(new IllegalArgumentException("Warehouse data is invalid")),
         new NoopReplaceWarehouseUseCase(),
         new NoopGetWarehouseOperation(null),
-        new RecordingListWarehousesOperation(List.of()));
+        new RecordingListWarehousesOperation(List.of()),
+        mapper);
 
     var ex = assertThrows(WebApplicationException.class,
         () -> resource.createANewWarehouseUnit(invalidCreatePayload()));
@@ -91,7 +97,8 @@ class WarehouseResourceImplTest {
         new NoopCreateWarehouseUseCase(),
         new NoopReplaceWarehouseUseCase(),
         getOperation,
-        new RecordingListWarehousesOperation(List.of()));
+        new RecordingListWarehousesOperation(List.of()),
+        mapper);
 
     var result = resource.getAWarehouseUnitByID("MWH.004");
 
@@ -109,7 +116,8 @@ class WarehouseResourceImplTest {
         new NoopCreateWarehouseUseCase(),
         new NoopReplaceWarehouseUseCase(),
         new NoopGetWarehouseOperation(null),
-        new RecordingListWarehousesOperation(List.of()));
+        new RecordingListWarehousesOperation(List.of()),
+        mapper);
 
     var ex = assertThrows(WebApplicationException.class, () -> resource.getAWarehouseUnitByID("missing"));
 
@@ -125,7 +133,8 @@ class WarehouseResourceImplTest {
         new NoopCreateWarehouseUseCase(),
         new NoopReplaceWarehouseUseCase(),
         new NoopGetWarehouseOperation(null),
-        new RecordingListWarehousesOperation(List.of()));
+        new RecordingListWarehousesOperation(List.of()),
+        mapper);
 
     resource.archiveAWarehouseUnitByID("MWH.005");
 
@@ -141,7 +150,8 @@ class WarehouseResourceImplTest {
         new NoopCreateWarehouseUseCase(),
         new NoopReplaceWarehouseUseCase(),
         new NoopGetWarehouseOperation(null),
-        new RecordingListWarehousesOperation(List.of()));
+        new RecordingListWarehousesOperation(List.of()),
+        mapper);
 
     var ex = assertThrows(WebApplicationException.class, () -> resource.archiveAWarehouseUnitByID("MWH.005"));
 
@@ -158,7 +168,8 @@ class WarehouseResourceImplTest {
         new NoopCreateWarehouseUseCase(),
         replaceOperation,
         new NoopGetWarehouseOperation(null),
-        new RecordingListWarehousesOperation(List.of()));
+        new RecordingListWarehousesOperation(List.of()),
+        mapper);
     var payload = apiWarehouse("IGNORED", "Rome", 120, 40);
 
     var result = resource.replaceTheCurrentActiveWarehouse("MWH.006", payload);
@@ -181,7 +192,8 @@ class WarehouseResourceImplTest {
         new NoopCreateWarehouseUseCase(),
         new RecordingReplaceWarehouseUseCase(),
         new NoopGetWarehouseOperation(null),
-        new RecordingListWarehousesOperation(List.of()));
+        new RecordingListWarehousesOperation(List.of()),
+        mapper);
 
     var ex = assertThrows(WebApplicationException.class,
         () -> resource.replaceTheCurrentActiveWarehouse("MWH.006", invalidReplacePayload()));
@@ -198,7 +210,8 @@ class WarehouseResourceImplTest {
         new NoopCreateWarehouseUseCase(),
         replaceOperation,
         new NoopGetWarehouseOperation(null),
-        new RecordingListWarehousesOperation(List.of()));
+        new RecordingListWarehousesOperation(List.of()),
+        mapper);
 
     var ex = assertThrows(WebApplicationException.class,
         () -> resource.replaceTheCurrentActiveWarehouse("MWH.006", invalidReplacePayload()));
@@ -358,7 +371,7 @@ class WarehouseResourceImplTest {
     private int calls;
 
     private RecordingListWarehousesOperation(List<Warehouse> warehouses) {
-      this.warehouses = new ArrayList<>(warehouses);
+      this.warehouses = List.copyOf(warehouses);
     }
 
     @Override

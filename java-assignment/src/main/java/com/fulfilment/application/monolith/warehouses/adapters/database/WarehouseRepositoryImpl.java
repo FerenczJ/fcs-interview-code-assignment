@@ -5,26 +5,28 @@ import com.fulfilment.application.monolith.warehouses.domain.ports.WarehouseRepo
 import io.quarkus.hibernate.orm.panache.PanacheRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import java.util.List;
+import jakarta.inject.Inject;
 
 @ApplicationScoped
 public class WarehouseRepositoryImpl implements WarehouseRepository, PanacheRepository<DbWarehouse> {
+
+  private final WarehouseDatabaseMapper mapper;
+
+  @Inject
+  public WarehouseRepositoryImpl(WarehouseDatabaseMapper mapper) {
+    this.mapper = mapper;
+  }
 
   @Override
   public List<Warehouse> getAll() {
     return this.list("archivedAt is null")
             .stream()
-            .map(DbWarehouse::toWarehouse).toList();
+            .map(mapper::toDomain).toList();
   }
 
   @Override
   public void create(Warehouse warehouse) {
-    var dbWarehouse = new DbWarehouse();
-    dbWarehouse.businessUnitCode = warehouse.businessUnitCode;
-    dbWarehouse.location = warehouse.location;
-    dbWarehouse.capacity = warehouse.capacity;
-    dbWarehouse.stock = warehouse.stock;
-    dbWarehouse.createdAt = warehouse.createdAt;
-    dbWarehouse.archivedAt = warehouse.archivedAt;
+    var dbWarehouse = mapper.toDb(warehouse);
     persist(dbWarehouse);
   }
 
@@ -34,17 +36,13 @@ public class WarehouseRepositoryImpl implements WarehouseRepository, PanacheRepo
     if (dbWarehouse == null) {
       return;
     }
-    dbWarehouse.location = warehouse.location;
-    dbWarehouse.capacity = warehouse.capacity;
-    dbWarehouse.stock = warehouse.stock;
-    dbWarehouse.createdAt = warehouse.createdAt;
-    dbWarehouse.archivedAt = warehouse.archivedAt;
+    mapper.updateDb(dbWarehouse, warehouse);
   }
 
   @Override
   public Warehouse findByBusinessUnitCode(String buCode) {
     var entity = findByBusinessUnitCodeEntity(buCode);
-    return entity == null ? null : entity.toWarehouse();
+    return entity == null ? null : mapper.toDomain(entity);
   }
 
   @Override
