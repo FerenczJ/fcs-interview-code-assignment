@@ -140,7 +140,7 @@ class WarehouseEndpointIT {
         .post(path + "/" + code + "/replacement")
         .then()
         .statusCode(200)
-        .body("businessUnitCode", equalTo("IGNORED-BODY-CODE"))
+        .body("businessUnitCode", equalTo(code))
         .body("location", equalTo("AMSTERDAM-002"))
         .body("capacity", equalTo(25))
         .body("stock", equalTo(3));
@@ -151,7 +151,7 @@ class WarehouseEndpointIT {
         .then()
         .statusCode(200)
         .body("businessUnitCode", equalTo(code))
-        .body("location", equalTo("HELMOND-001"))
+        .body("location", equalTo("AMSTERDAM-002"))
         .body("capacity", equalTo(25))
         .body("stock", equalTo(3));
   }

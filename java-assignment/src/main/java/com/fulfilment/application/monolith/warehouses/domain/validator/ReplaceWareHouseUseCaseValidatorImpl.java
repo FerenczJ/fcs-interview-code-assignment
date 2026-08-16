@@ -8,13 +8,13 @@ import com.fulfilment.application.monolith.warehouses.domain.ports.WarehouseUseC
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Named;
 
-@Named("createWarehouseUseCaseValidator")
+@Named("replaceWarehouseUseCaseValidator")
 @ApplicationScoped
-public class CreateWarehouseUseCaseValidatorImpl implements WarehouseUseCaseValidator {
+public class ReplaceWareHouseUseCaseValidatorImpl implements WarehouseUseCaseValidator {
   private final WarehouseRepository warehouseRepository;
   private final LocationResolver locationResolver;
 
-  public CreateWarehouseUseCaseValidatorImpl(
+  public ReplaceWareHouseUseCaseValidatorImpl(
       WarehouseRepository warehouseRepository, LocationResolver locationResolver) {
     this.warehouseRepository = warehouseRepository;
     this.locationResolver = locationResolver;
@@ -23,11 +23,13 @@ public class CreateWarehouseUseCaseValidatorImpl implements WarehouseUseCaseVali
   @Override
   public void validate(Warehouse warehouse) {
     validateBasicData(warehouse);
-    validateBusinessUnitCodeUniqueness(warehouse.businessUnitCode);
 
-    var location = resolveLocation(warehouse.location);
-    validateCapacityAndStock(warehouse, location);
-    validateWarehouseCreationFeasibility(location);
+    var existingWarehouse = warehouseRepository.findByBusinessUnitCode(warehouse.businessUnitCode);
+    validateStockMatches(existingWarehouse, warehouse);
+    validateCapacityAccommodation(existingWarehouse, warehouse);
+
+    var location = validateAndResolveLocation(warehouse.location);
+    validateCapacityRules(warehouse, location);
   }
 
   private void validateBasicData(Warehouse warehouse) {
@@ -39,33 +41,38 @@ public class CreateWarehouseUseCaseValidatorImpl implements WarehouseUseCaseVali
     }
   }
 
-  private void validateBusinessUnitCodeUniqueness(String businessUnitCode) {
-    if (warehouseRepository.findByBusinessUnitCode(businessUnitCode) != null) {
-      throw new IllegalArgumentException("Business unit code already exists");
+  private void validateStockMatches(Warehouse existingWarehouse, Warehouse warehouse) {
+    if (existingWarehouse == null) {
+      return;
+    }
+    if (existingWarehouse.stock != null && !existingWarehouse.stock.equals(warehouse.stock)) {
+      throw new IllegalArgumentException("Warehouse stock must match the previous warehouse stock");
     }
   }
 
-  private Location resolveLocation(String identifier) {
-    try {
-      return locationResolver.resolveByIdentifier(identifier);
-    } catch (Exception e) {
-      throw new IllegalArgumentException("Location is invalid", e);
+  private void validateCapacityAccommodation(Warehouse existingWarehouse, Warehouse warehouse) {
+    if (existingWarehouse == null) {
+      return;
+    }
+    if (warehouse.capacity < existingWarehouse.stock) {
+      throw new IllegalArgumentException("New warehouse capacity cannot accommodate the previous stock");
     }
   }
 
-  private void validateCapacityAndStock(Warehouse warehouse, Location location) {
+  private Location validateAndResolveLocation(String identifier) {
+    var location = locationResolver.resolveByIdentifier(identifier);
+    if (location == null) {
+      throw new IllegalArgumentException("Location is invalid");
+    }
+    return location;
+  }
+
+  private void validateCapacityRules(Warehouse warehouse, Location location) {
     if (warehouse.capacity > location.capacity()) {
       throw new IllegalArgumentException("Warehouse capacity exceeds location capacity");
     }
     if (warehouse.stock > warehouse.capacity) {
       throw new IllegalArgumentException("Warehouse stock exceeds warehouse capacity");
-    }
-  }
-
-  private void validateWarehouseCreationFeasibility(Location location) {
-    var existingWarehousesCount = warehouseRepository.countByLocation(location.identification());
-    if (location.zone() <= existingWarehousesCount) {
-      throw new IllegalArgumentException("Maximum number of warehouses reached for location");
     }
   }
 }

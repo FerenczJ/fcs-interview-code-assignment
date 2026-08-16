@@ -5,6 +5,7 @@ import com.fulfilment.application.monolith.warehouses.domain.ports.CreateWarehou
 import com.fulfilment.application.monolith.warehouses.domain.ports.WarehouseRepository;
 import com.fulfilment.application.monolith.warehouses.domain.ports.WarehouseUseCaseValidator;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Named;
 
 @ApplicationScoped
 public class CreateWarehouseUseCase implements CreateWarehouseOperation {
@@ -12,7 +13,8 @@ public class CreateWarehouseUseCase implements CreateWarehouseOperation {
   private final WarehouseUseCaseValidator warehouseUseCaseValidator;
 
   public CreateWarehouseUseCase(
-      WarehouseRepository warehouseRepository, WarehouseUseCaseValidator warehouseUseCaseValidator) {
+      WarehouseRepository warehouseRepository,
+      @Named("createWarehouseUseCaseValidator") WarehouseUseCaseValidator warehouseUseCaseValidator) {
     this.warehouseRepository = warehouseRepository;
     this.warehouseUseCaseValidator = warehouseUseCaseValidator;
   }

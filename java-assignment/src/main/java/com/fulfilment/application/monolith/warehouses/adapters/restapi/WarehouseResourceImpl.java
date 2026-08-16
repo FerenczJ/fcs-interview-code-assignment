@@ -1,9 +1,6 @@
 package com.fulfilment.application.monolith.warehouses.adapters.restapi;
 
 import com.fulfilment.application.monolith.warehouses.domain.ports.*;
-import com.fulfilment.application.monolith.warehouses.domain.usecases.ArchiveWarehouseUseCase;
-import com.fulfilment.application.monolith.warehouses.domain.usecases.CreateWarehouseUseCase;
-import com.fulfilment.application.monolith.warehouses.domain.usecases.ReplaceWarehouseUseCase;
 import com.warehouse.api.WarehouseResource;
 import com.warehouse.api.beans.Warehouse;
 import jakarta.enterprise.context.RequestScoped;
@@ -84,6 +81,7 @@ public class WarehouseResourceImpl implements WarehouseResource {
       archiveWarehouseOperation.archive(businessUnitCode);
       replaceWarehouseOperation.replace(replacement);
 
+      data.setBusinessUnitCode(businessUnitCode);
       return data;
     } catch (NotFoundException e) {
       throw new WebApplicationException("Cannot replace warehouse: " + e.getMessage(), Response.Status.NOT_FOUND);
