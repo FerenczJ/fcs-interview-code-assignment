@@ -1,5 +1,6 @@
 package com.fulfilment.application.monolith.warehouses.adapters.restapi;
 
+import com.fulfilment.application.monolith.warehouses.adapters.restapi.mapper.WarehouseResourceMapper;
 import com.fulfilment.application.monolith.warehouses.domain.ports.*;
 import com.warehouse.api.WarehouseResource;
 import com.warehouse.api.beans.Warehouse;
@@ -20,25 +21,28 @@ public class WarehouseResourceImpl implements WarehouseResource {
   private final ReplaceWarehouseOperation replaceWarehouseOperation;
   private final GetWarehouseOperation warehouseOperation;
   private final ListWarehousesOperation listWarehousesOperation;
+  private final WarehouseResourceMapper mapper;
 
   @Inject
   public WarehouseResourceImpl(ArchiveWarehouseOperation archiveWarehouseUseCase,
                                CreateWarehouseOperation createWarehouseUseCase,
                                ReplaceWarehouseOperation replaceWarehouseUseCase,
                                GetWarehouseOperation getWarehouseOperation,
-                               ListWarehousesOperation listWarehousesOperation) {
+                               ListWarehousesOperation listWarehousesOperation,
+                               WarehouseResourceMapper mapper) {
     this.archiveWarehouseOperation = archiveWarehouseUseCase;
     this.createWarehouseOperation = createWarehouseUseCase;
     this.replaceWarehouseOperation = replaceWarehouseUseCase;
     this.warehouseOperation = getWarehouseOperation;
     this.listWarehousesOperation = listWarehousesOperation;
+    this.mapper = mapper;
   }
 
   @Override
   public List<Warehouse> listAllWarehousesUnits() {
     return listWarehousesOperation.listWarehouses()
                 .stream()
-                .map(this::toWarehouseResponse)
+                .map(mapper::toApi)
                 .toList();
   }
 
@@ -46,7 +50,7 @@ public class WarehouseResourceImpl implements WarehouseResource {
   @Transactional
   public Warehouse createANewWarehouseUnit(@NotNull Warehouse data) {
     try {
-      createWarehouseOperation.create(toDomainWarehouse(data));
+      createWarehouseOperation.create(mapper.toDomain(data));
       return data;
     } catch (IllegalArgumentException e) {
       throw new WebApplicationException("Cannot create warehouse: " + e.getMessage(), Response.Status.BAD_REQUEST);
@@ -58,7 +62,7 @@ public class WarehouseResourceImpl implements WarehouseResource {
     var warehouse = warehouseOperation.get(id);
     if (warehouse == null) throw notFound();
 
-    return toWarehouseResponse(warehouse);
+    return mapper.toApi(warehouse);
   }
 
   @Override
@@ -75,7 +79,7 @@ public class WarehouseResourceImpl implements WarehouseResource {
   @Transactional
   public Warehouse replaceTheCurrentActiveWarehouse(String businessUnitCode, @NotNull Warehouse data) {
     try {
-      var replacement = toDomainWarehouse(data);
+      var replacement = mapper.toDomain(data);
       replacement.businessUnitCode = businessUnitCode;
 
       archiveWarehouseOperation.archive(businessUnitCode);
@@ -92,26 +96,5 @@ public class WarehouseResourceImpl implements WarehouseResource {
 
   private WebApplicationException notFound() {
     return new WebApplicationException("Warehouse unit not found", Response.Status.NOT_FOUND);
-  }
-
-  private com.fulfilment.application.monolith.warehouses.domain.models.Warehouse toDomainWarehouse(
-      Warehouse data) {
-    var warehouse = new com.fulfilment.application.monolith.warehouses.domain.models.Warehouse();
-    warehouse.businessUnitCode = data.getBusinessUnitCode();
-    warehouse.location = data.getLocation();
-    warehouse.capacity = data.getCapacity();
-    warehouse.stock = data.getStock();
-    return warehouse;
-  }
-
-  private Warehouse toWarehouseResponse(
-      com.fulfilment.application.monolith.warehouses.domain.models.Warehouse warehouse) {
-    var response = new Warehouse();
-    response.setBusinessUnitCode(warehouse.businessUnitCode);
-    response.setLocation(warehouse.location);
-    response.setCapacity(warehouse.capacity);
-    response.setStock(warehouse.stock);
-
-    return response;
   }
 }
