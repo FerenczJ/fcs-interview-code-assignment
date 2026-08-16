@@ -8,6 +8,7 @@ import com.fulfilment.application.monolith.location.Location;
 import com.fulfilment.application.monolith.warehouses.domain.models.Warehouse;
 import com.fulfilment.application.monolith.warehouses.domain.ports.LocationResolver;
 import com.fulfilment.application.monolith.warehouses.domain.ports.WarehouseRepository;
+import com.fulfilment.application.monolith.warehouses.domain.ports.WarehouseUseCaseValidator;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -17,7 +18,7 @@ class CreateWarehouseUseCaseTest {
 
   @Test
   void create_rejectsNullWarehouse() {
-    var useCase = new CreateWarehouseUseCase(new StubWarehouseStore(), new StubLocationResolver());
+    var useCase = new CreateWarehouseUseCase(new StubWarehouseStore(), new StubWarehouseUseCaseValidator());
 
     var ex = assertThrows(IllegalArgumentException.class, () -> useCase.create(null));
     assertEquals("Warehouse data is invalid", ex.getMessage());
@@ -25,7 +26,7 @@ class CreateWarehouseUseCaseTest {
 
   @Test
   void create_rejectsWarehouseWithNullBusinessUnitCode() {
-    var useCase = new CreateWarehouseUseCase(new StubWarehouseStore(), new StubLocationResolver());
+    var useCase = new CreateWarehouseUseCase(new StubWarehouseStore(), new StubWarehouseUseCaseValidator());
 
     var warehouse = warehouse(Location.ZWOLLE_001.identification(), 40, 10);
     warehouse.businessUnitCode = null;
@@ -36,7 +37,7 @@ class CreateWarehouseUseCaseTest {
 
   @Test
   void create_rejectsWarehouseWithNullLocation() {
-    var useCase = new CreateWarehouseUseCase(new StubWarehouseStore(), new StubLocationResolver());
+    var useCase = new CreateWarehouseUseCase(new StubWarehouseStore(), new StubWarehouseUseCaseValidator());
 
     var warehouse = warehouse(Location.ZWOLLE_001.identification(), 40, 10);
     warehouse.location = null;
@@ -47,7 +48,7 @@ class CreateWarehouseUseCaseTest {
 
   @Test
   void create_rejectsWarehouseWithNullCapacity() {
-    var useCase = new CreateWarehouseUseCase(new StubWarehouseStore(), new StubLocationResolver());
+    var useCase = new CreateWarehouseUseCase(new StubWarehouseStore(), new StubWarehouseUseCaseValidator());
 
     var warehouse = warehouse(Location.ZWOLLE_001.identification(), 40, 10);
     warehouse.capacity = null;
@@ -58,7 +59,7 @@ class CreateWarehouseUseCaseTest {
 
   @Test
   void create_rejectsWarehouseWithNullStock() {
-    var useCase = new CreateWarehouseUseCase(new StubWarehouseStore(), new StubLocationResolver());
+    var useCase = new CreateWarehouseUseCase(new StubWarehouseStore(), new StubWarehouseUseCaseValidator());
 
     var warehouse = warehouse(Location.ZWOLLE_001.identification(), 40, 10);
     warehouse.stock = null;
@@ -69,7 +70,7 @@ class CreateWarehouseUseCaseTest {
 
   @Test
   void create_rejectsInvalidLocation() {
-    var useCase = new CreateWarehouseUseCase(new StubWarehouseStore(), new StubLocationResolver());
+    var useCase = new CreateWarehouseUseCase(new StubWarehouseStore(), new StubWarehouseUseCaseValidator());
 
     var warehouse = warehouse("NOT_A_REAL_LOCATION", 100, 10);
 
@@ -81,7 +82,7 @@ class CreateWarehouseUseCaseTest {
   void create_rejectsDuplicateBusinessUnitCode() {
     var store = new StubWarehouseStore();
     store.create(warehouseWithCode("MWH.001", Location.ZWOLLE_001.identification(), 40, 10));
-    var useCase = new CreateWarehouseUseCase(store, new StubLocationResolver());
+    var useCase = new CreateWarehouseUseCase(store, new StubWarehouseUseCaseValidator(store, new StubLocationResolver()));
 
     var duplicateWarehouse = warehouseWithCode("MWH.001", Location.ZWOLLE_001.identification(), 40, 10);
     var ex = assertThrows(IllegalArgumentException.class, () -> useCase.create(duplicateWarehouse));
@@ -91,7 +92,7 @@ class CreateWarehouseUseCaseTest {
 
   @Test
   void create_acceptsValidLocation() {
-    var useCase = new CreateWarehouseUseCase(new StubWarehouseStore(), new StubLocationResolver());
+    var useCase = new CreateWarehouseUseCase(new StubWarehouseStore(), new StubWarehouseUseCaseValidator());
 
     var warehouse = warehouse(Location.ZWOLLE_001.identification(), 40, 10);
 
@@ -103,7 +104,7 @@ class CreateWarehouseUseCaseTest {
     var store = new StubWarehouseStore();
     store.create(activeWarehouse("MWH.001", Location.ZWOLLE_001.identification()));
     store.create(activeWarehouse("MWH.002", Location.ZWOLLE_001.identification()));
-    var useCase = new CreateWarehouseUseCase(store, new StubLocationResolver());
+    var useCase = new CreateWarehouseUseCase(store, new StubWarehouseUseCaseValidator(store, new StubLocationResolver()));
 
     var warehouse = warehouseWithCode("MWH.003", Location.ZWOLLE_001.identification(), 40, 10);
     var ex = assertThrows(IllegalArgumentException.class, () -> useCase.create(warehouse));
@@ -115,7 +116,7 @@ class CreateWarehouseUseCaseTest {
   void create_ignoresArchivedWarehousesWhenCountingLocationCapacity() {
     var store = new StubWarehouseStore();
     store.create(archivedWarehouse(Location.ZWOLLE_001.identification()));
-    var useCase = new CreateWarehouseUseCase(store, new StubLocationResolver());
+    var useCase = new CreateWarehouseUseCase(store, new StubWarehouseUseCaseValidator(store, new StubLocationResolver()));
 
     var warehouse = warehouseWithCode("MWH.002", Location.ZWOLLE_001.identification(), 40, 10);
     assertDoesNotThrow(() -> useCase.create(warehouse));
@@ -123,7 +124,7 @@ class CreateWarehouseUseCaseTest {
 
   @Test
   void create_rejectsWhenWarehouseCapacityExceedsLocationCapacity() {
-    var useCase = new CreateWarehouseUseCase(new StubWarehouseStore(), new StubLocationResolver());
+    var useCase = new CreateWarehouseUseCase(new StubWarehouseStore(), new StubWarehouseUseCaseValidator());
 
     var warehouse = warehouseWithCapacityAndStock("MWH.004", Location.ZWOLLE_001.identification(), 41, 10);
     var ex = assertThrows(IllegalArgumentException.class, () -> useCase.create(warehouse));
@@ -133,7 +134,7 @@ class CreateWarehouseUseCaseTest {
 
   @Test
   void create_rejectsWhenStockExceedsWarehouseCapacity() {
-    var useCase = new CreateWarehouseUseCase(new StubWarehouseStore(), new StubLocationResolver());
+    var useCase = new CreateWarehouseUseCase(new StubWarehouseStore(), new StubWarehouseUseCaseValidator());
 
     var warehouse = warehouseWithCapacityAndStock("MWH.005", Location.ZWOLLE_001.identification(), 40, 41);
     var ex = assertThrows(IllegalArgumentException.class, () -> useCase.create(warehouse));
@@ -143,7 +144,7 @@ class CreateWarehouseUseCaseTest {
 
   @Test
   void create_acceptsCapacityAndStockAtLocationLimit() {
-    var useCase = new CreateWarehouseUseCase(new StubWarehouseStore(), new StubLocationResolver());
+    var useCase = new CreateWarehouseUseCase(new StubWarehouseStore(), new StubWarehouseUseCaseValidator());
 
     var warehouse = warehouseWithCapacityAndStock("MWH.006", Location.ZWOLLE_001.identification(), 40, 40);
     assertDoesNotThrow(() -> useCase.create(warehouse));
@@ -223,6 +224,54 @@ class CreateWarehouseUseCaseTest {
           .filter(existing -> existing.archivedAt == null)
           .filter(existing -> location.equals(existing.location))
           .count();
+    }
+  }
+
+  private static final class StubWarehouseUseCaseValidator implements WarehouseUseCaseValidator {
+    private final WarehouseRepository warehouseRepository;
+    private final LocationResolver locationResolver;
+
+    private StubWarehouseUseCaseValidator() {
+      this(new StubWarehouseStore(), new StubLocationResolver());
+    }
+
+    private StubWarehouseUseCaseValidator(WarehouseRepository warehouseRepository, LocationResolver locationResolver) {
+      this.warehouseRepository = warehouseRepository;
+      this.locationResolver = locationResolver;
+    }
+
+    @Override
+    public void validate(Warehouse warehouse) {
+      if (warehouse == null || warehouse.businessUnitCode == null || warehouse.location == null) {
+        throw new IllegalArgumentException("Warehouse data is invalid");
+      }
+      if (warehouse.capacity == null || warehouse.stock == null) {
+        throw new IllegalArgumentException("Warehouse capacity or stock is invalid");
+      }
+      if (warehouseRepository.findByBusinessUnitCode(warehouse.businessUnitCode) != null) {
+        throw new IllegalArgumentException("Business unit code already exists");
+      }
+
+      var location = resolveLocation(warehouse.location);
+      if (warehouse.capacity > location.capacity()) {
+        throw new IllegalArgumentException("Warehouse capacity exceeds location capacity");
+      }
+      if (warehouse.stock > warehouse.capacity) {
+        throw new IllegalArgumentException("Warehouse stock exceeds warehouse capacity");
+      }
+
+      var existingWarehousesCount = warehouseRepository.countByLocation(location.identification());
+      if (location.zone() <= existingWarehousesCount) {
+        throw new IllegalArgumentException("Maximum number of warehouses reached for location");
+      }
+    }
+
+    private Location resolveLocation(String identifier) {
+      try {
+        return locationResolver.resolveByIdentifier(identifier);
+      } catch (Exception e) {
+        throw new IllegalArgumentException("Location is invalid", e);
+      }
     }
   }
 }
