@@ -9,7 +9,7 @@ Here we have 3 questions related to the code base for you to answer. It is not a
 Standardize on Domain-Driven Database Access
 --------------------------------------------
 The current codebase exhibits a hybrid data access layer, mixing domain-based and stereotype-based implementation strategies. 
-To establish consistency and align with official Quarkus community best practices, we should refactor toward a unified domain-based (Active Record/Panache Entity) model, despite the my traditional Spring Boot background.
+To establish consistency and align with official Quarkus community best practices, we should refactor toward a unified domain-based (Active Record/Panache Entity) model, extended with usage of interfaces.
 
 Introduce a Dedicated Service Layer
 -----------------------------------
